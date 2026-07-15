@@ -109,11 +109,11 @@
   </div>
   
   <script>
-    // ★新しいGASのWebアプリケーションURLを貼り付けてください★
+    // ★新しくデプロイしたGASのWebアプリケーションURLを貼り付けてください★
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzHulVz-ess7-N0IxPk1-fqcUdKIRBDxVcsUPNptXb-AiaTiIHuWoO5WTqyvVfmu4sn/exec';
 
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
-    let paramGroup = '両方', paramType = 'A'; // 初期値は後で上書きされます
+    let paramGroup = '両方', paramType = 'A'; // 初期値（ログイン時にスタッフ情報で上書きされます）
 
     function formatLateNightTime(timeStr) {
       if (!timeStr) return '';
@@ -135,12 +135,10 @@
     }
     
     window.onload = function() {
-      // ログイン前は何も読み込まない
-      const urlParams = new URLSearchParams(window.location.search);
-      paramType = urlParams.get('type') || 'A';
+      // 起動時はログイン前のため、何もしません。
     };
 
-    // 新規: ログイン処理
+    // ログイン処理（修正版：性別に加えてTypeも動的にセットします）
     function doLogin() {
       const phone4 = document.getElementById('loginPhone').value.trim();
       const birth4 = document.getElementById('loginBirth').value.trim();
@@ -154,15 +152,17 @@
       callGasApi({ action: 'login', phone4: phone4, birth4: birth4 })
         .then(function(res) {
           if (res.success) {
-            // ログイン成功: 性別をセットしてメイン画面へ
+            // ログイン成功: 性別(paramGroup)とタイプ(paramType)をセットしてメイン画面へ
             paramGroup = res.gender; 
+            paramType = res.type || 'A'; // F列から取得したType（無ければデフォルトでA）
+            
             document.getElementById('inputStaffId').value = res.staffId;
             document.getElementById('inputStaffName').value = res.staffName;
             
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
             
-            loadJobs(); // 案件を読み込む
+            loadJobs(); // そのスタッフの条件（性別・Type）に合った案件を自動読み込み
           } else {
             toggleLoading(false);
             showModal('ログイン失敗', res.message, null, false);
@@ -175,7 +175,7 @@
     }
     
     function loadJobs() {
-      // ログインで取得した性別(paramGroup)を渡して案件取得
+      // ログインで取得した性別(paramGroup)とType(paramType)を渡して案件取得
       callGasApi({ action: 'getJobs', group: paramGroup, type: paramType })
         .then(function(jobs) {
           toggleLoading(false); 
