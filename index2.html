@@ -115,16 +115,12 @@
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
     let paramGroup = '両方', paramType = 'A';
 
-    // 勤務時間を hh:mm（2桁揃え）に整形し、かつ0時を24時に変換する改善版関数
+    // 勤務時間を hh:mm に整形し、0時を24時に変換する関数
     function formatLateNightTime(timeStr) {
       if (!timeStr) return '';
-      
       const str = String(timeStr).trim();
-      
-      // 「時:分」のパターンを抽出（秒「:00」が含まれていても、最初の「時:分」だけを取り出します）
       const match = str.match(/(\d{1,2}):(\d{2})/);
       if (!match) {
-        // 万が一スプレッドシートの仕様で少数（シリアル値）で届いた場合のバックアップ処理
         const num = Number(str);
         if (!isNaN(num) && num >= 0 && num < 1) {
           const totalMinutes = Math.round(num * 24 * 60);
@@ -132,22 +128,34 @@
           const m = totalMinutes % 60;
           return formatLateNightTime(`${h}:${m}`);
         }
-        return str; // パターンに変換できない場合はそのまま返す
+        return str;
       }
-      
       let hour = parseInt(match[1], 10);
       const minute = match[2];
+      if (hour === 0) hour = 24;
+      return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+    }
+
+    // 新規追加: 履歴の日付を日本語形式(yyyy/MM/dd(曜日))に整形する関数
+    function formatHistoryDate(dateVal) {
+      if (!dateVal) return '不明な日付';
       
-      // 0時（0:00 または 00:00）の場合のみ、24時表記にする
-      if (hour === 0) {
-        hour = 24;
+      const str = String(dateVal).trim();
+      
+      // GASから送られてくる英語表記の日付やシリアル値をJavaScriptのDateオブジェクトに変換
+      let d = new Date(str);
+      
+      // 日付に変換できなかった場合は元の文字列をそのまま返す
+      if (isNaN(d.getTime())) {
+        return str;
       }
       
-      // 「時」を2桁（0埋め）に揃える（例: 9 -> 09）
-      const paddedHour = String(hour).padStart(2, '0');
-      const paddedMinute = String(minute).padStart(2, '0');
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
       
-      return paddedHour + ':' + paddedMinute;
+      return `${year}/${month}/${day}(${dayOfWeek})`;
     }
     
     function callGasApi(params) {
@@ -218,6 +226,7 @@
       if (type === 'history') loadHistory();
     }
     
+    // 修正: 取得した履歴の日付をフォーマット関数を介して出力するように変更
     function loadHistory() {
       const staffId = document.getElementById('inputStaffId').value.trim();
       document.getElementById('historyContainer').innerHTML = '読み込み中...';
@@ -226,7 +235,9 @@
           if (!history.length) { document.getElementById('historyContainer').innerHTML = '履歴なし'; return; }
           let html = '';
           history.reverse().forEach(h => {
-             html += `<div class="job-card" style="border-left-color:var(--secondary)"><b>${h.jobName}</b><br><small>${h.date}</small></div>`;
+             // 読み込んだ日付を日本語表記に整形します
+             const formattedDate = formatHistoryDate(h.date);
+             html += `<div class="job-card" style="border-left-color:var(--secondary)"><b>${h.jobName}</b><br><small>${formattedDate}</small></div>`;
           });
           document.getElementById('historyContainer').innerHTML = html;
         })
