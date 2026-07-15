@@ -113,16 +113,41 @@
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbzHulVz-ess7-N0IxPk1-fqcUdKIRBDxVcsUPNptXb-AiaTiIHuWoO5WTqyvVfmu4sn/exec';
 
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
-    let paramGroup = '両方', paramType = 'A'; // 初期値（ログイン時にスタッフ情報で上書きされます）
+    let paramGroup = '両方', paramType = 'A';
 
+    // 勤務時間を hh:mm（2桁揃え）に整形し、かつ0時を24時に変換する改善版関数
     function formatLateNightTime(timeStr) {
       if (!timeStr) return '';
-      const parts = String(timeStr).split(':');
-      if (parts.length !== 2) return timeStr;
-      let hour = parseInt(parts[0], 10);
-      const minute = parts[1];
-      if (hour === 0) hour = 24;
-      return hour + ':' + minute;
+      
+      const str = String(timeStr).trim();
+      
+      // 「時:分」のパターンを抽出（秒「:00」が含まれていても、最初の「時:分」だけを取り出します）
+      const match = str.match(/(\d{1,2}):(\d{2})/);
+      if (!match) {
+        // 万が一スプレッドシートの仕様で少数（シリアル値）で届いた場合のバックアップ処理
+        const num = Number(str);
+        if (!isNaN(num) && num >= 0 && num < 1) {
+          const totalMinutes = Math.round(num * 24 * 60);
+          const h = Math.floor(totalMinutes / 60);
+          const m = totalMinutes % 60;
+          return formatLateNightTime(`${h}:${m}`);
+        }
+        return str; // パターンに変換できない場合はそのまま返す
+      }
+      
+      let hour = parseInt(match[1], 10);
+      const minute = match[2];
+      
+      // 0時（0:00 または 00:00）の場合のみ、24時表記にする
+      if (hour === 0) {
+        hour = 24;
+      }
+      
+      // 「時」を2桁（0埋め）に揃える（例: 9 -> 09）
+      const paddedHour = String(hour).padStart(2, '0');
+      const paddedMinute = String(minute).padStart(2, '0');
+      
+      return paddedHour + ':' + paddedMinute;
     }
     
     function callGasApi(params) {
@@ -138,7 +163,6 @@
       // 起動時はログイン前のため、何もしません。
     };
 
-    // ログイン処理（修正版：性別に加えてTypeも動的にセットします）
     function doLogin() {
       const phone4 = document.getElementById('loginPhone').value.trim();
       const birth4 = document.getElementById('loginBirth').value.trim();
@@ -152,9 +176,8 @@
       callGasApi({ action: 'login', phone4: phone4, birth4: birth4 })
         .then(function(res) {
           if (res.success) {
-            // ログイン成功: 性別(paramGroup)とタイプ(paramType)をセットしてメイン画面へ
             paramGroup = res.gender; 
-            paramType = res.type || 'A'; // F列から取得したType（無ければデフォルトでA）
+            paramType = res.type || 'A';
             
             document.getElementById('inputStaffId').value = res.staffId;
             document.getElementById('inputStaffName').value = res.staffName;
@@ -162,7 +185,7 @@
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
             
-            loadJobs(); // そのスタッフの条件（性別・Type）に合った案件を自動読み込み
+            loadJobs();
           } else {
             toggleLoading(false);
             showModal('ログイン失敗', res.message, null, false);
@@ -175,7 +198,6 @@
     }
     
     function loadJobs() {
-      // ログインで取得した性別(paramGroup)とType(paramType)を渡して案件取得
       callGasApi({ action: 'getJobs', group: paramGroup, type: paramType })
         .then(function(jobs) {
           toggleLoading(false); 
