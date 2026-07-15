@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>スタッフ専用 追加募集ポータル</title>
+  <title>スタッフ専用 募集ポータル</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     :root { --primary: #4A90E2; --bg: #F5F7FA; --text: #333; --card-bg: #FFF; --danger: #E74C3C; --secondary: #2ECC71; }
@@ -29,6 +29,9 @@
     .btn { display: block; width: 100%; padding: 12px; color: white; text-align: center; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
     .btn-select { background: var(--primary); }
     .btn-remove { background: #95A5A6; }
+    
+    /* 応募済みボタン用のスタイル */
+    .btn-applied { background: #BDC3C7; color: #7F8C8D; cursor: not-allowed; }
     
     #cartBar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--secondary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; transform: translateY(100%); transition: transform 0.3s; z-index: 100; }
     #cartBar.active { transform: translateY(0); }
@@ -114,6 +117,7 @@
 
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
     let paramGroup = '両方', paramType = 'A';
+    let appliedJobIds = []; // ★追加: 応募済み案件のIDを保存する配列★
 
     // 勤務時間を hh:mm に整形し、0時を24時に変換する関数
     function formatLateNightTime(timeStr) {
@@ -136,25 +140,18 @@
       return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
     }
 
-    // 新規追加: 履歴の日付を日本語形式(yyyy/MM/dd(曜日))に整形する関数
+    // 履歴の日付を日本語形式(yyyy/MM/dd(曜日))に整形する関数
     function formatHistoryDate(dateVal) {
       if (!dateVal) return '不明な日付';
-      
       const str = String(dateVal).trim();
-      
-      // GASから送られてくる英語表記の日付やシリアル値をJavaScriptのDateオブジェクトに変換
       let d = new Date(str);
-      
-      // 日付に変換できなかった場合は元の文字列をそのまま返す
       if (isNaN(d.getTime())) {
         return str;
       }
-      
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
-      
       return `${year}/${month}/${day}(${dayOfWeek})`;
     }
     
@@ -170,6 +167,19 @@
     window.onload = function() {
       // 起動時はログイン前のため、何もしません。
     };
+
+    // ★追加: スタッフの応募済み案件IDを取得・更新する関数★
+    function loadAppliedJobs(staffId) {
+      return callGasApi({ action: 'getMyHistory', staffId: staffId })
+        .then(function(history) {
+          // 履歴データから案件ID(jobId)を抽出して配列に保存
+          appliedJobIds = history.map(h => String(h.jobId || ''));
+        })
+        .catch(function(err) {
+          console.error('応募済みデータのロードに失敗しました:', err);
+          appliedJobIds = [];
+        });
+    }
 
     function doLogin() {
       const phone4 = document.getElementById('loginPhone').value.trim();
@@ -193,7 +203,10 @@
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
             
-            loadJobs();
+            // ★ログイン成功時に、最初に応募済みリストを取得し、その後に案件をロードする★
+            loadAppliedJobs(res.staffId).then(function() {
+              loadJobs();
+            });
           } else {
             toggleLoading(false);
             showModal('ログイン失敗', res.message, null, false);
@@ -226,7 +239,7 @@
       if (type === 'history') loadHistory();
     }
     
-    // 修正: 取得した履歴の日付をフォーマット関数を介して出力するように変更
+    // ★修正: 履歴表示のレイアウトを「勤務日」→「案件名」の順に修正★
     function loadHistory() {
       const staffId = document.getElementById('inputStaffId').value.trim();
       document.getElementById('historyContainer').innerHTML = '読み込み中...';
@@ -235,9 +248,12 @@
           if (!history.length) { document.getElementById('historyContainer').innerHTML = '履歴なし'; return; }
           let html = '';
           history.reverse().forEach(h => {
-             // 読み込んだ日付を日本語表記に整形します
              const formattedDate = formatHistoryDate(h.date);
-             html += `<div class="job-card" style="border-left-color:var(--secondary)"><b>${h.jobName}</b><br><small>${formattedDate}</small></div>`;
+             html += `
+              <div class="job-card" style="border-left-color:var(--secondary); padding: 12px 15px;">
+                <div style="font-size:13px; color:#555; margin-bottom:5px;"><b>勤務日：${formattedDate}</b></div>
+                <div style="font-size:16px; font-weight:bold; color:var(--text);">${h.jobName}</div>
+              </div>`;
           });
           document.getElementById('historyContainer').innerHTML = html;
         })
@@ -265,17 +281,31 @@
     function changeMonth(n) { currentDate.setMonth(currentDate.getMonth() + n); renderCalendar(); }
     function selectDate(d) { selectedDateStr = d; renderCalendar(); renderJobs(d); }
     
+    // ★修正: すでに一度応募した案件がある場合はボタンを「応募済み」に変更する★
     function renderJobs(dateStr) {
       const container = document.getElementById('jobsContainer'); container.innerHTML = '';
       const dayJobs = allJobs.filter(j => j.date === dateStr);
       
       dayJobs.forEach(job => {
-        const isSel = selectedJobs.some(s => s.id === job.id), isFull = job.currentCount >= job.capacity;
+        const isSel = selectedJobs.some(s => s.id === job.id);
+        const isFull = job.currentCount >= job.capacity;
+        const isApplied = appliedJobIds.includes(String(job.id)); // 既に応募済みか確認
         
         const safeEventName = String(job.eventName || '').replace(/'/g, "\\'").replace(/"/g, '"').replace(/\n/g, ' ');
         const safeId = String(job.id || '').replace(/'/g, "\\'");
         
-        const btn = isSel ? `<button class="btn btn-remove" onclick="toggleJob('${safeId}','','',true)">選択解除</button>` : (isFull ? '<b style="color:red">満員</b>' : `<button class="btn btn-select" onclick="toggleJob('${safeId}','${job.date}','${safeEventName}',false)">選択</button>`);
+        // ボタン部分の制御
+        let btn = '';
+        if (isApplied) {
+          // すでに応募済みの場合は「応募済み」グレーボタン（クリック不可）
+          btn = `<button class="btn btn-applied" disabled>応募済み</button>`;
+        } else if (isSel) {
+          btn = `<button class="btn btn-remove" onclick="toggleJob('${safeId}','','',true)">選択解除</button>`;
+        } else if (isFull) {
+          btn = '<b style="color:red">満員</b>';
+        } else {
+          btn = `<button class="btn btn-select" onclick="toggleJob('${safeId}','${job.date}','${safeEventName}',false)">選択</button>`;
+        }
         
         const notesHtml = job.notes ? `<div class="job-detail" style="margin-top:5px; color:#666; background:#f5f5f5; padding:5px; border-radius:4px;">📝備考: ${String(job.notes || '').replace(/\n/g, '<br>')}</div>` : '';
         
@@ -331,7 +361,14 @@
           toggleLoading(false); 
           showModal('結果', res.message.replace(/\n/g,'<br>'), () => { 
              if(res.success) {
-               selectedJobs=[]; loadJobs(); document.getElementById('cartBar').classList.remove('active');
+               selectedJobs=[]; 
+               
+               // ★応募完了時に、裏で最新の応募済みリストを再ロードし、案件一覧をリフレッシュする★
+               loadAppliedJobs(staffId).then(function() {
+                 loadJobs();
+               });
+               
+               document.getElementById('cartBar').classList.remove('active');
              } 
           }, false);
         })
