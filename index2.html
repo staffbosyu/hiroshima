@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>スタッフ専用 募集ポータル</title>
+  <title>スタッフ専用 案件応募ポータル</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     :root { --primary: #4A90E2; --bg: #F5F7FA; --text: #333; --card-bg: #FFF; --danger: #E74C3C; --secondary: #2ECC71; }
@@ -30,8 +30,9 @@
     .btn-select { background: var(--primary); }
     .btn-remove { background: #95A5A6; }
     
-    /* 応募済みボタン用のスタイル */
+    /* 応募済みボタン・リンク用のスタイル */
     .btn-applied { background: #BDC3C7; color: #7F8C8D; cursor: not-allowed; }
+    .btn-link { text-decoration: none; font-size: 14px; padding: 10px; display: flex; align-items: center; justify-content: center; }
     
     #cartBar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--secondary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; transform: translateY(100%); transition: transform 0.3s; z-index: 100; }
     #cartBar.active { transform: translateY(0); }
@@ -45,6 +46,7 @@
 <body>
   <div id="loading">処理中...</div>
 
+  <!-- ログインセクション -->
   <div id="loginSection">
     <div class="card">
       <h2 style="color: var(--primary); text-align: center; margin-top: 0;">ログイン</h2>
@@ -58,8 +60,9 @@
     </div>
   </div>
   
+  <!-- メインセクション -->
   <div id="mainSection">
-    <h2 style="color: var(--primary); margin-top: 0;">案件応募 ソールドアウト広島支社</h2>
+    <h2 style="color: var(--primary); margin-top: 0;">追加募集 ポータル</h2>
     
     <div class="card">
       <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 10px;">応募者情報（確認用）</h3>
@@ -67,6 +70,17 @@
       <input type="text" id="inputStaffId" readonly>
       <label style="font-size: 14px; font-weight: bold;">お名前</label>
       <input type="text" id="inputStaffName" readonly>
+    </div>
+
+    <!-- ★新規追加: マニュアル等へのリンク枠★ -->
+    <div class="card" style="padding: 10px 15px;">
+      <div style="display: flex; gap: 10px;">
+        <!-- ↓ href="ここ" にスタッフマニュアルのURLを貼り付けてください -->
+        <a href="https://app.notion.com/p/258ab20be5ab80488376eade4edbf079?source=copy_link" target="_blank" rel="noopener noreferrer" class="btn btn-link" style="background: #34495E;">📘 マニュアル</a>
+        
+        <!-- ↓ href="ここ" に応募のやり方のURLを貼り付けてください -->
+        <a href="https://sites.google.com/soldout.co.jp/shiroshimaoubo/%E3%83%9B%E3%83%BC%E3%83%A0" target="_blank" rel="noopener noreferrer" class="btn btn-link" style="background: #16A085;">❓ 応募のやり方</a>
+      </div>
     </div>
     
     <div class="tab-container">
@@ -117,9 +131,8 @@
 
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
     let paramGroup = '両方', paramType = 'A';
-    let appliedJobIds = []; // ★追加: 応募済み案件のIDを保存する配列★
+    let appliedJobIds = [];
 
-    // 勤務時間を hh:mm に整形し、0時を24時に変換する関数
     function formatLateNightTime(timeStr) {
       if (!timeStr) return '';
       const str = String(timeStr).trim();
@@ -140,7 +153,6 @@
       return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
     }
 
-    // 履歴の日付を日本語形式(yyyy/MM/dd(曜日))に整形する関数
     function formatHistoryDate(dateVal) {
       if (!dateVal) return '不明な日付';
       const str = String(dateVal).trim();
@@ -165,14 +177,11 @@
     }
     
     window.onload = function() {
-      // 起動時はログイン前のため、何もしません。
     };
 
-    // ★追加: スタッフの応募済み案件IDを取得・更新する関数★
     function loadAppliedJobs(staffId) {
       return callGasApi({ action: 'getMyHistory', staffId: staffId })
         .then(function(history) {
-          // 履歴データから案件ID(jobId)を抽出して配列に保存
           appliedJobIds = history.map(h => String(h.jobId || ''));
         })
         .catch(function(err) {
@@ -203,7 +212,6 @@
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('mainSection').style.display = 'block';
             
-            // ★ログイン成功時に、最初に応募済みリストを取得し、その後に案件をロードする★
             loadAppliedJobs(res.staffId).then(function() {
               loadJobs();
             });
@@ -239,7 +247,6 @@
       if (type === 'history') loadHistory();
     }
     
-    // ★修正: 履歴表示のレイアウトを「勤務日」→「案件名」の順に修正★
     function loadHistory() {
       const staffId = document.getElementById('inputStaffId').value.trim();
       document.getElementById('historyContainer').innerHTML = '読み込み中...';
@@ -281,7 +288,6 @@
     function changeMonth(n) { currentDate.setMonth(currentDate.getMonth() + n); renderCalendar(); }
     function selectDate(d) { selectedDateStr = d; renderCalendar(); renderJobs(d); }
     
-    // ★修正: すでに一度応募した案件がある場合はボタンを「応募済み」に変更する★
     function renderJobs(dateStr) {
       const container = document.getElementById('jobsContainer'); container.innerHTML = '';
       const dayJobs = allJobs.filter(j => j.date === dateStr);
@@ -289,15 +295,13 @@
       dayJobs.forEach(job => {
         const isSel = selectedJobs.some(s => s.id === job.id);
         const isFull = job.currentCount >= job.capacity;
-        const isApplied = appliedJobIds.includes(String(job.id)); // 既に応募済みか確認
+        const isApplied = appliedJobIds.includes(String(job.id));
         
         const safeEventName = String(job.eventName || '').replace(/'/g, "\\'").replace(/"/g, '"').replace(/\n/g, ' ');
         const safeId = String(job.id || '').replace(/'/g, "\\'");
         
-        // ボタン部分の制御
         let btn = '';
         if (isApplied) {
-          // すでに応募済みの場合は「応募済み」グレーボタン（クリック不可）
           btn = `<button class="btn btn-applied" disabled>応募済み</button>`;
         } else if (isSel) {
           btn = `<button class="btn btn-remove" onclick="toggleJob('${safeId}','','',true)">選択解除</button>`;
@@ -362,12 +366,9 @@
           showModal('結果', res.message.replace(/\n/g,'<br>'), () => { 
              if(res.success) {
                selectedJobs=[]; 
-               
-               // ★応募完了時に、裏で最新の応募済みリストを再ロードし、案件一覧をリフレッシュする★
                loadAppliedJobs(staffId).then(function() {
                  loadJobs();
                });
-               
                document.getElementById('cartBar').classList.remove('active');
              } 
           }, false);
