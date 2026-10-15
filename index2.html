@@ -93,7 +93,7 @@
         <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 15px; color: #D35400;">⚠️ 応募に関する注意事項</h3>
         <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #555; line-height: 1.6;">
           <li>応募は<b>1日1案件まで</b>となります。</li>
-          <li>同日に複数応募された場合はエラーとなりますのでご注意ください。</li>
+          <li>すでに応募した日付の別案件は、<b>選択画面でも選べません</b>。</li>
           <li>ご自身のスケジュールをよく確認の上、ご応募をお願いいたします。</li>
         </ul>
       </div>
@@ -132,6 +132,24 @@
     let allJobs = [], selectedJobs = [], currentDate = new Date(), selectedDateStr = "";
     let paramGroup = '両方', paramType = 'A';
     let appliedJobIds = [];
+    let appliedDates = []; // すでに応募済みの日付（yyyy/MM/dd）
+
+    // 日付を yyyy/MM/dd に揃える（履歴・案件・選択中の比較用）
+    function normalizeDate(dateVal) {
+      if (!dateVal) return '';
+      if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+        const y = dateVal.getFullYear();
+        const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+        const d = String(dateVal.getDate()).padStart(2, '0');
+        return `${y}/${m}/${d}`;
+      }
+      const str = String(dateVal).trim();
+      const m = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (m) {
+        return `${m[1]}/${String(m[2]).padStart(2, '0')}/${String(m[3]).padStart(2, '0')}`;
+      }
+      return str;
+    }
 
     function formatLateNightTime(timeStr) {
       if (!timeStr) return '';
@@ -183,10 +201,14 @@
       return callGasApi({ action: 'getMyHistory', staffId: staffId })
         .then(function(history) {
           appliedJobIds = history.map(h => String(h.jobId || ''));
+          appliedDates = [...new Set(
+            history.map(h => normalizeDate(h.date)).filter(Boolean)
+          )];
         })
         .catch(function(err) {
           console.error('応募済みデータのロードに失敗しました:', err);
           appliedJobIds = [];
+          appliedDates = [];
         });
     }
 
@@ -291,6 +313,8 @@
     function renderJobs(dateStr) {
       const container = document.getElementById('jobsContainer'); container.innerHTML = '';
       const dayJobs = allJobs.filter(j => j.date === dateStr);
+      const dayNorm = normalizeDate(dateStr);
+      const isSameDayAlreadyApplied = appliedDates.includes(dayNorm);
       
       dayJobs.forEach(job => {
         const isSel = selectedJobs.some(s => s.id === job.id);
@@ -303,6 +327,9 @@
         let btn = '';
         if (isApplied) {
           btn = `<button class="btn btn-applied" disabled>応募済み</button>`;
+        } else if (isSameDayAlreadyApplied) {
+          // 同日の別案件に応募済み → 選択不可
+          btn = `<button class="btn btn-applied" disabled>同日応募済み</button>`;
         } else if (isSel) {
           btn = `<button class="btn btn-remove" onclick="toggleJob('${safeId}','','',true)">選択解除</button>`;
         } else if (isFull) {
@@ -336,8 +363,16 @@
     function toggleJob(id, date, name, isRem) {
       if (isRem) { selectedJobs = selectedJobs.filter(j => j.id !== id); }
       else {
-        if (selectedJobs.some(j => j.date === date)) { showModal('エラー', '同日1件までです', null, false); return; }
-        selectedJobs.push({ id, date, name });
+        const dateNorm = normalizeDate(date);
+        if (appliedDates.includes(dateNorm)) {
+          showModal('エラー', 'すでに同じ日付の案件に応募済みのため、選択できません。（1日1案件まで）', null, false);
+          return;
+        }
+        if (selectedJobs.some(j => normalizeDate(j.date) === dateNorm)) {
+          showModal('エラー', '同日1件までです。別の日付の案件を選んでください。', null, false);
+          return;
+        }
+        selectedJobs.push({ id, date: dateNorm || date, name });
       }
       
       const bar = document.getElementById('cartBar');
